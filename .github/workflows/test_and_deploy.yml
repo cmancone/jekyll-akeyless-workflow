@@ -1,0 +1,67 @@
+on:
+  workflow_call:
+    inputs:
+      access-id:
+        required: true
+        type: string
+        description: 'The AKeyless access id to use to login to AKeyless'
+      aws-producer-path:
+        required: true
+        type: string
+        description: 'The path to the AWS producer in AKeyless.  It will be used to fetch AWS credentials for the deployment'
+      access-type:
+        type: string
+        description: 'The access type to use to login to AKeyless (jwt or aws_iam)'
+        default: 'jwt'
+jobs:
+  terraform_plan:
+    runs-on: ubuntu-latest
+    name: Terraform Plan
+    if: ${{ inputs.run-terraform == true }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Login to AWS
+        id: fetch-secrets
+        uses: cmancone/akeyless-action@v1
+        with:
+          access-id: ${{ inputs.access-id }}
+          producer-for-aws-access: ${{ inputs.aws-producer-path }}
+          access-type: ${{ inputs.access-type }}
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v1
+      - name: Init
+        id: terraform-init
+        run: cd ./terraform && terraform init
+      - name: Plan
+        id: terraform-plan
+        run: cd ./terraform && terraform plan -no-color
+  deploy:
+    if: github.ref == ${{ github.event.repository.default_branch }}
+    needs: [terraform_plan]
+    runs-on: ubuntu-latest
+    name: Deploy
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Login to AWS
+        id: fetch-secrets
+        uses: cmancone/akeyless-action@v1
+        with:
+          access-id: ${{ inputs.access-id }}
+          producer-for-aws-access: ${{ inputs.aws-producer-path }}
+          access-type: ${{ inputs.access-type }}
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v1
+      - name: Init
+        id: terraform-init
+        run: cd ./terraform && terraform init
+      - name: Deploy
+        id: terraform-deploy
+        run: cd ./terraform && terraform apply --auto-approve
